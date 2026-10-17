@@ -13,19 +13,19 @@
 /* Layout: settings left, preview + export right; stacks on mobile */
 :root {
   --bg: #f3f4f6; --panel: #ffffff; --fg: #17191e; --muted: #5c6270; --line: #d8dbe1;
-  --accent: #2747d9; --accent-fg: #ffffff; --danger: #b42318; --ok: #1f7a3d; --stage: #0e0f12; --sel: #e8ecff;
+  --accent: #2747d9; --accent-fg: #ffffff; --danger: #b42318; --ok: #1f7a3d; --stage: #0e0f12; --sel: #e8ecff; --warn-bg: #fff4e0; --warn-fg: #7a4a00; --warn-line: #f0c27a;
   --ui: "Manrope", system-ui, -apple-system, "Segoe UI", sans-serif;
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --bg: #121317; --panel: #1a1c21; --fg: #e8e9ed; --muted: #9ba1ac; --line: #2d3037;
-    --accent: #8197ff; --accent-fg: #0b0e1d; --danger: #ff8a80; --ok: #6fd08c; --stage: #000000; --sel: #23284a; color-scheme: dark;
+    --accent: #8197ff; --accent-fg: #0b0e1d; --danger: #ff8a80; --ok: #6fd08c; --stage: #000000; --sel: #23284a; --warn-bg: #2e2412; --warn-fg: #f5cf8a; --warn-line: #6b5121; color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
   --bg: #121317; --panel: #1a1c21; --fg: #e8e9ed; --muted: #9ba1ac; --line: #2d3037;
-  --accent: #8197ff; --accent-fg: #0b0e1d; --danger: #ff8a80; --ok: #6fd08c; --stage: #000000; --sel: #23284a; color-scheme: dark;
+  --accent: #8197ff; --accent-fg: #0b0e1d; --danger: #ff8a80; --ok: #6fd08c; --stage: #000000; --sel: #23284a; --warn-bg: #2e2412; --warn-fg: #f5cf8a; --warn-line: #6b5121; color-scheme: dark;
 }
 body { background: var(--bg); color: var(--fg); font: 15px/1.45 var(--ui); }
 .wrap { max-width: 1320px; margin: 0 auto; padding-block: 20px 40px;
@@ -74,6 +74,14 @@ progress { width: 100%; height: 10px; accent-color: var(--accent); }
 .actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
 .status { font-size: 13px; color: var(--muted); min-height: 1.3em; }
 .status.err { color: var(--danger); }
+.notice { background: var(--warn-bg); color: var(--warn-fg); border: 1px solid var(--warn-line); border-radius: 8px; padding: 10px 14px; margin: 0 0 16px; font-size: 14px; display: grid; gap: 4px; }
+.notice p { margin: 0; }
+.badges { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: -8px 0 16px; font-size: 13px; color: var(--muted); }
+.badges strong { color: var(--fg); font-weight: 600; }
+.foot { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line); display: grid; gap: 8px; font-size: 13px; color: var(--muted); max-width: 72ch; }
+.foot p { margin: 0; }
+.foot strong { color: var(--fg); }
+.foot .linkbtn { font-size: 13px; }
 video { width: 100%; max-height: 50vh; background: var(--stage); border-radius: 6px; display: block; }
 .jobs { display: grid; gap: 6px; }
 .job { display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(0, 1.3fr) auto; gap: 6px 8px; align-items: center;
@@ -92,12 +100,16 @@ video { width: 100%; max-height: 50vh; background: var(--stage); border-radius: 
   .job .ttl { grid-column: 2 / 3; }
 }
 </style>
-<script src="https://cdn.jsdelivr.net/npm/mp4-muxer@5.2.2/build/mp4-muxer.min.js"></script>
 </head>
 <body>
 <div class="wrap">
   <h1>Track Video Maker</h1>
   <p class="sub">Audio file + photo + names → an MP4 still where the text moves like a spectrum. Everything runs locally in your browser.</p>
+  <div class="badges">
+    <span><strong>Private:</strong> your files never leave your computer</span>
+    <span><strong>Best in:</strong> Chrome or Edge on a computer</span>
+  </div>
+  <div class="notice" id="notice" role="alert" hidden></div>
 
   <div class="grid">
     <section class="panel" aria-label="Settings">
@@ -119,7 +131,13 @@ video { width: 100%; max-height: 50vh; background: var(--stage); border-radius: 
           </div>
           <input id="folderInput" type="file" webkitdirectory directory multiple hidden>
           <input id="filesInput" type="file" multiple accept="audio/*,.mp3,.wav,.m4a,.flac,.ogg,.aac" hidden>
-          <span class="hint">The track title is taken from the text inside quotes in the file name. A name in parentheses becomes the artist for that track only. Example: <span class="mono">01 "Midnight" (Ellie).mp3</span></span>
+          <label class="lbl" for="batchNames">Names on the videos</label>
+          <select id="batchNames">
+            <option value="files">From each file name</option>
+            <option value="same">Same title and artist on all</option>
+          </select>
+          <span class="hint" id="hintFiles">The track title is taken from the text inside quotes in the file name. A name in parentheses becomes the artist for that track only. Example: <span class="mono">01 "Midnight" (Ellie).mp3</span></span>
+          <span class="hint" id="hintSame" hidden>Every video gets the title and artist you type below. File names are ignored, and the videos are numbered in list order.</span>
         </div>
 
         <div class="field">
@@ -133,7 +151,7 @@ video { width: 100%; max-height: 50vh; background: var(--stage); border-radius: 
           <input id="artist" type="text" placeholder="Artist name" autocomplete="off">
         </div>
         <div class="field" id="titleField">
-          <label class="lbl" for="title">Track title</label>
+          <label class="lbl" for="title" id="titleLbl">Track title</label>
           <input id="title" type="text" placeholder="Track title" autocomplete="off">
         </div>
         <div class="row2">
@@ -353,6 +371,13 @@ video { width: 100%; max-height: 50vh; background: var(--stage); border-radius: 
       </div>
     </section>
   </div>
+
+  <footer class="foot">
+    <p><strong>Private by design.</strong> Your audio and photos are read and turned into video inside your own browser. Nothing is uploaded to any server.</p>
+    <p><strong>Browser support.</strong> Chrome and Edge on a computer create MP4 files several times faster than real time. Firefox and Safari record in real time instead, which takes as long as the song and may save a WebM file. Most platforms accept WebM, but MP4 is the safest choice.</p>
+    <p><strong>Saved in this browser only.</strong> Your settings, artist name and default photo are stored on this device, in this browser. They are not shared with other devices or other people.
+      <button class="linkbtn" id="clearSaved" type="button">Clear saved settings and photo</button></p>
+  </footer>
 </div>
 
 <script>
@@ -384,7 +409,7 @@ const LOOK = {
   specColorOn: false, specColor: '#ffd166',
   pulse: 7, imgPulse: 0, zoom: false, darken: 60, blur: 50,
 };
-const S = { artist: '', title: '', batch: false, format: 'land', fps: 30, ...LOOK };
+const S = { artist: '', title: '', batch: false, batchNames: 'files', format: 'land', fps: 30, ...LOOK };
 try {
   const saved = JSON.parse(localStorage.getItem('latvideo.settings') || 'null');
   if (saved) for (const k of Object.keys(S)) if (k !== 'title' && k in saved && typeof saved[k] === typeof S[k]) S[k] = saved[k];
@@ -406,6 +431,7 @@ const audioEl = new Audio(); audioEl.preload = 'auto';
 let needsDraw = true, busy = false, cancelFlag = false, audioCtx = null;
 let resultBlob = null, resultName = '', resultURL = null;
 let JOBS = [], selJob = 0, jobSeq = 0;
+let canFast = false, canAac = false;
 
 /* ---------- helpers ---------- */
 function setStatus(msg, err) { const s = $('status'); s.textContent = msg; s.classList.toggle('err', !!err); }
@@ -525,7 +551,8 @@ function buildLayout(artist, title) {
 function previewTexts() {
   if (S.batch) {
     const j = JOBS[selJob];
-    if (j) return [j.artist, j.title];
+    if (j) return jobNames(j);
+    if (sameNames()) return [S.artist || 'Artist name', S.title || 'Track title'];
     return [S.artist || 'Artist name', 'Track title'];
   }
   if (!S.artist.trim() && !S.title.trim()) return ['Artist name', 'Track title'];
@@ -779,7 +806,7 @@ function updateTransport() {
   const dur = audioBuffer ? audioBuffer.duration : 0;
   $('timecode').textContent = fmt(audioEl.currentTime) + ' / ' + fmt(dur);
   if (dur && document.activeElement !== $('seek')) $('seek').value = Math.round(audioEl.currentTime / dur * 1000);
-  const codec = ('VideoEncoder' in window) ? 'H.264 + AAC' : 'real-time recording';
+  const codec = canFast ? (canAac ? 'MP4 · H.264 + AAC' : 'MP4 · H.264 + Opus') : 'real-time recording';
   $('spec').textContent = `${W}×${H} · ${S.fps} fps · ${codec}` + (dur && !S.batch ? ` · ${fmt(dur)}` : '');
 }
 function updateButtons() {
@@ -959,6 +986,9 @@ function parseName(fname) {
 }
 
 /* ---------- batch from folder ---------- */
+const sameNames = () => S.batch && S.batchNames === 'same';
+const jobNames = j => sameNames() ? [S.artist, S.title] : [j.artist, j.title];
+const namesKey = j => jobNames(j).map(x => (x || '').trim()).join('\u0000');
 function loadJobs(files) {
   const audio = [...files].filter(f => AUDIO_EXT.test(f.name) || (f.type || '').startsWith('audio/'))
     .sort((a, b) => (a.webkitRelativePath || a.name).localeCompare(b.webkitRelativePath || b.name, 'sv', { numeric: true }));
@@ -988,22 +1018,25 @@ function jobRow(j, i) {
   row.className = 'job' + (i === selJob ? ' sel' : '');
   row.dataset.id = j.id;
   const num = document.createElement('span'); num.className = 'mono'; num.textContent = String(i + 1).padStart(2, '0');
-  const art = document.createElement('input'); art.type = 'text'; art.value = j.artist; art.placeholder = 'Artist';
+  const [effA, effT] = jobNames(j), same = sameNames();
+  const art = document.createElement('input'); art.type = 'text'; art.value = effA; art.placeholder = 'Artist';
   art.setAttribute('aria-label', 'Artist for ' + j.file.name); art.className = 'art';
-  const ttl = document.createElement('input'); ttl.type = 'text'; ttl.value = j.title; ttl.placeholder = 'Track title';
+  const ttl = document.createElement('input'); ttl.type = 'text'; ttl.value = effT; ttl.placeholder = 'Track title';
   ttl.setAttribute('aria-label', 'Title for ' + j.file.name); ttl.className = 'ttl';
   const rm = document.createElement('button'); rm.type = 'button'; rm.className = 'small rm'; rm.textContent = '×';
   rm.setAttribute('aria-label', 'Remove ' + j.file.name);
   const fn = document.createElement('div'); fn.className = 'fname';
   fn.textContent = j.file.webkitRelativePath || j.file.name;
-  if (j.override) fn.append(' · artist from parentheses');
-  if (!j.quoted) { const w = document.createElement('span'); w.className = 'warn'; w.textContent = ' · no quotes found, check the title'; fn.appendChild(w); }
+  if (!same && j.override) fn.append(' · artist from parentheses');
+  if (!same && !j.quoted) { const w = document.createElement('span'); w.className = 'warn'; w.textContent = ' · no quotes found, check the title'; fn.appendChild(w); }
   const st = document.createElement('div'); st.className = 'st';
   row.append(num, art, ttl, rm, fn, st);
   fillStatus(j, st);
 
   const lock = () => j.state === 'work';
-  art.disabled = ttl.disabled = rm.disabled = lock();
+  art.disabled = ttl.disabled = lock() || same;
+  rm.disabled = lock();
+  if (same) art.title = ttl.title = 'Set by "Same title and artist on all"';
   art.addEventListener('input', () => { j.artist = art.value; j.edited = true; if (j.state === 'done') resetJob(j); if (i === selJob) rebuildText(); });
   ttl.addEventListener('input', () => { j.title = ttl.value; if (j.state === 'done') resetJob(j); if (i === selJob) rebuildText(); });
   rm.addEventListener('click', e => {
@@ -1037,18 +1070,20 @@ function updateJob(j) {
   if (row) {
     fillStatus(j, row.querySelector('.st'));
     const lock = j.state === 'work';
-    row.querySelectorAll('input, .rm').forEach(el => { el.disabled = lock; });
+    row.querySelectorAll('input').forEach(el => { el.disabled = lock || sameNames(); });
+    row.querySelector('.rm').disabled = lock;
   }
   updateButtons();
 }
-function onDefaultArtist() {
+function syncJobNames() {
   if (!S.batch) return;
+  const same = sameNames();
   for (const j of JOBS) {
-    if (j.override || j.edited) continue;
-    j.artist = S.artist;
-    const row = document.querySelector(`.job[data-id="${j.id}"] .art`);
-    if (row) row.value = S.artist;
-    if (j.state === 'done') resetJob(j);
+    if (!same && !j.override && !j.edited) j.artist = S.artist;
+    const [a, t] = jobNames(j);
+    const row = document.querySelector(`.job[data-id="${j.id}"]`);
+    if (row) { row.querySelector('.art').value = a; row.querySelector('.ttl').value = t; }
+    if (j.state === 'done' && j.madeAs !== namesKey(j)) resetJob(j);
   }
 }
 
@@ -1097,6 +1132,157 @@ $('saveBtn').addEventListener('click', async () => {
   else if (r === 'declined') setStatus('Save cancelled.');
 });
 
+/* ---------- MP4 writer (no dependencies): H.264 video + AAC or Opus audio, moov first ---------- */
+class Mp4Writer {
+  constructor(opt) {
+    this.v = { width: opt.video.width, height: opt.video.height, fps: opt.video.fps, timescale: 90000, samples: [], desc: null };
+    this.a = { codec: opt.audio.codec, rate: opt.audio.sampleRate, ch: opt.audio.channels, bitrate: opt.audio.bitrate || 0,
+               timescale: opt.audio.sampleRate, samples: [], desc: null };
+  }
+  static bytes(x) {
+    if (!x) return null;
+    if (x instanceof ArrayBuffer) return new Uint8Array(x.slice(0));
+    return new Uint8Array(x.buffer.slice(x.byteOffset, x.byteOffset + x.byteLength));
+  }
+  static chunkData(chunk) {
+    if (chunk.data) return chunk.data;              // plain object (tests)
+    const d = new Uint8Array(chunk.byteLength); chunk.copyTo(d); return d;
+  }
+  addVideo(chunk, meta) {
+    if (!this.v.desc && meta && meta.decoderConfig && meta.decoderConfig.description) this.v.desc = Mp4Writer.bytes(meta.decoderConfig.description);
+    this.v.samples.push({ data: Mp4Writer.chunkData(chunk), t: chunk.timestamp, d: chunk.duration, key: chunk.type === 'key' });
+  }
+  addAudio(chunk, meta) {
+    if (!this.a.desc && meta && meta.decoderConfig && meta.decoderConfig.description) this.a.desc = Mp4Writer.bytes(meta.decoderConfig.description);
+    this.a.samples.push({ data: Mp4Writer.chunkData(chunk), t: chunk.timestamp, d: chunk.duration, key: true });
+  }
+
+  finalize() {
+    const V = this.v, A = this.a;
+    if (!V.samples.length) throw new Error('No video frames were encoded.');
+    if (!V.desc) throw new Error('The video encoder did not provide its configuration.');
+    if (!A.samples.length) throw new Error('No audio was encoded.');
+    const { u8, u16, u24, u32, u64, str, cat, box, full } = Mp4Writer.B;
+
+    // Per-sample durations in each track's timescale
+    const vDelta = Math.round(V.timescale / V.fps);
+    V.samples.forEach(s => { s.dt = vDelta; });
+    const aDefault = A.codec === 'opus' ? 960 : 1024;
+    A.samples.forEach(s => { s.dt = s.d ? Math.max(1, Math.round(s.d * A.rate / 1e6)) : aDefault; });
+    const vDur = V.samples.reduce((n, s) => n + s.dt, 0), aDur = A.samples.reduce((n, s) => n + s.dt, 0);
+
+    // Interleave samples in mdat by time
+    const order = [];
+    let i = 0, j = 0;
+    while (i < V.samples.length || j < A.samples.length) {
+      if (j >= A.samples.length || (i < V.samples.length && V.samples[i].t <= A.samples[j].t)) order.push(V.samples[i++]);
+      else order.push(A.samples[j++]);
+    }
+    const dataSize = order.reduce((n, s) => n + s.data.byteLength, 0);
+    const big = dataSize + 1e6 > 0xffffffff;
+
+    const matrix = cat(u32(0x00010000), u32(0), u32(0), u32(0), u32(0x00010000), u32(0), u32(0), u32(0), u32(0x40000000));
+    const sttsBox = samples => {
+      const runs = [];
+      for (const s of samples) { const r = runs[runs.length - 1]; if (r && r[1] === s.dt) r[0]++; else runs.push([1, s.dt]); }
+      const b = new Uint8Array(8 * runs.length), dv = new DataView(b.buffer);
+      runs.forEach((r, k) => { dv.setUint32(k * 8, r[0]); dv.setUint32(k * 8 + 4, r[1]); });
+      return full('stts', 0, 0, u32(runs.length), b);
+    };
+    const stszBox = samples => {
+      const b = new Uint8Array(4 * samples.length), dv = new DataView(b.buffer);
+      samples.forEach((s, k) => dv.setUint32(k * 4, s.data.byteLength));
+      return full('stsz', 0, 0, u32(0), u32(samples.length), b);
+    };
+    const stcoBox = samples => {
+      const b = new Uint8Array((big ? 8 : 4) * samples.length), dv = new DataView(b.buffer);
+      samples.forEach((s, k) => {
+        const o = s.off || 0;
+        if (big) { dv.setUint32(k * 8, Math.floor(o / 2 ** 32)); dv.setUint32(k * 8 + 4, o >>> 0); } else dv.setUint32(k * 4, o);
+      });
+      return full(big ? 'co64' : 'stco', 0, 0, u32(samples.length), b);
+    };
+    const stsc = full('stsc', 0, 0, u32(1), u32(1), u32(1), u32(1));
+    const dinf = box('dinf', full('dref', 0, 0, u32(1), full('url ', 0, 1)));
+    const tkhd = (id, durMs, isAudio) => full('tkhd', 0, 3, u32(0), u32(0), u32(id), u32(0), u32(durMs), u32(0), u32(0),
+      u16(0), u16(0), u16(isAudio ? 0x0100 : 0), u16(0), matrix,
+      u32(isAudio ? 0 : V.width * 65536), u32(isAudio ? 0 : V.height * 65536));
+    const mdhd = (ts, dur) => full('mdhd', 0, 0, u32(0), u32(0), u32(ts), u32(dur), u16(0x55c4), u16(0));
+    const hdlr = (type, name) => full('hdlr', 0, 0, u32(0), str(type), u32(0), u32(0), u32(0), str(name + '\0'));
+
+    // Sample entries
+    const avc1 = box('avc1', u8(0, 0, 0, 0, 0, 0), u16(1), u16(0), u16(0), u32(0), u32(0), u32(0),
+      u16(V.width), u16(V.height), u32(0x00480000), u32(0x00480000), u32(0), u16(1), new Uint8Array(32),
+      u16(0x0018), u16(0xffff), box('avcC', V.desc));
+    const audioHead = (type, rest) => box(type, u8(0, 0, 0, 0, 0, 0), u16(1), u32(0), u32(0),
+      u16(A.ch), u16(16), u16(0), u16(0), u32(A.rate * 65536), rest);
+    let audioEntry;
+    if (A.codec === 'aac') {
+      let asc = A.desc;
+      if (asc && asc.length >= 7 && asc[0] === 0xff && (asc[1] & 0xf0) === 0xf0) asc = null; // ADTS header, not a config
+      if (!asc || !asc.length) {
+        const fi = [96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000, 7350].indexOf(A.rate);
+        asc = u8((2 << 3) | (fi >> 1), ((fi & 1) << 7) | (A.ch << 3));
+      }
+      const desc = (tag, body) => cat(u8(tag, 0x80 | ((body.length >> 21) & 127), 0x80 | ((body.length >> 14) & 127),
+                                         0x80 | ((body.length >> 7) & 127), body.length & 127), body);
+      const esds = full('esds', 0, 0, desc(0x03, cat(u16(0), u8(0),
+        desc(0x04, cat(u8(0x40, 0x15), u24(0), u32(A.bitrate), u32(A.bitrate), desc(0x05, asc))),
+        desc(0x06, u8(0x02)))));
+      audioEntry = audioHead('mp4a', esds);
+    } else {
+      let preSkip = 312, inRate = A.rate;
+      const d = A.desc;
+      if (d && d.length >= 19 && String.fromCharCode(...d.subarray(0, 8)) === 'OpusHead') {
+        preSkip = d[10] | (d[11] << 8);
+        inRate = (d[12] | (d[13] << 8) | (d[14] << 16) | (d[15] << 24)) >>> 0;
+      }
+      audioEntry = audioHead('Opus', box('dOps', u8(0, A.ch), u16(preSkip), u32(inRate), u16(0), u8(0)));
+    }
+
+    const stss = () => {
+      const keys = []; V.samples.forEach((s, k) => { if (s.key) keys.push(k + 1); });
+      const b = new Uint8Array(4 * keys.length), dv = new DataView(b.buffer);
+      keys.forEach((n, k) => dv.setUint32(k * 4, n));
+      return full('stss', 0, 0, u32(keys.length), b);
+    };
+    const vMs = Math.round(vDur * 1000 / V.timescale), aMs = Math.round(aDur * 1000 / A.timescale);
+    const buildMoov = () => box('moov',
+      full('mvhd', 0, 0, u32(0), u32(0), u32(1000), u32(Math.max(vMs, aMs)), u32(0x00010000), u16(0x0100), u16(0),
+        u32(0), u32(0), matrix, u32(0), u32(0), u32(0), u32(0), u32(0), u32(0), u32(3)),
+      box('trak', tkhd(1, vMs, false), box('mdia', mdhd(V.timescale, vDur), hdlr('vide', 'VideoHandler'),
+        box('minf', full('vmhd', 0, 1, u16(0), u16(0), u16(0), u16(0)), dinf,
+          box('stbl', full('stsd', 0, 0, u32(1), avc1), sttsBox(V.samples), stss(), stsc, stszBox(V.samples), stcoBox(V.samples))))),
+      box('trak', tkhd(2, aMs, true), box('mdia', mdhd(A.timescale, aDur), hdlr('soun', 'SoundHandler'),
+        box('minf', full('smhd', 0, 0, u16(0), u16(0)), dinf,
+          box('stbl', full('stsd', 0, 0, u32(1), audioEntry), sttsBox(A.samples), stsc, stszBox(A.samples), stcoBox(A.samples))))));
+
+    const ftyp = box('ftyp', str('isom'), u32(0x200), str('isom'), str('iso2'), str('avc1'), str('mp41'));
+    const mdatHead = dataSize + 8 <= 0xffffffff ? cat(u32(dataSize + 8), str('mdat')) : cat(u32(1), str('mdat'), u64(dataSize + 16));
+    const moovLen = buildMoov().length;                 // offsets don't change the size
+    let off = ftyp.length + moovLen + mdatHead.length;
+    for (const s of order) { s.off = off; off += s.data.byteLength; }
+    const moov = buildMoov();
+    return new Blob([ftyp, moov, mdatHead, ...order.map(s => s.data)], { type: 'video/mp4' });
+  }
+}
+Mp4Writer.B = (() => {
+  const u8 = (...b) => Uint8Array.from(b);
+  const u16 = n => u8((n >>> 8) & 255, n & 255);
+  const u24 = n => u8((n >>> 16) & 255, (n >>> 8) & 255, n & 255);
+  const u32 = n => u8((n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255);
+  const u64 = n => cat(u32(Math.floor(n / 2 ** 32)), u32(n >>> 0));
+  const str = s => new TextEncoder().encode(s);
+  const cat = (...parts) => {
+    const len = parts.reduce((n, p) => n + p.length, 0), out = new Uint8Array(len);
+    let o = 0; for (const p of parts) { out.set(p, o); o += p.length; }
+    return out;
+  };
+  const box = (type, ...parts) => { const body = cat(...parts); return cat(u32(body.length + 8), str(type), body); };
+  const full = (type, ver, flags, ...parts) => box(type, u8(ver), u24(flags), ...parts);
+  return { u8, u16, u24, u32, u64, str, cat, box, full };
+})();
+
 /* ---------- encoding ---------- */
 function exportCanvases() {
   const canvas = document.createElement('canvas'); canvas.width = W; canvas.height = H;
@@ -1117,22 +1303,19 @@ async function encodeWebCodecs(buffer, an, L, onProgress) {
     try { if ((await VideoEncoder.isConfigSupported(cfg)).supported) { vcfg = cfg; break; } } catch (e) {}
   }
   let acfg = null, acodec = null;
-  for (const [codec, mux, br] of [['mp4a.40.2', 'aac', 192000], ['opus', 'opus', 160000]]) {
+  for (const [codec, mux, br] of [['mp4a.40.2', 'aac', 192000], ['mp4a.40.2', 'aac', 160000], ['mp4a.40.2', 'aac', 128000], ['opus', 'opus', 160000]]) {
     const cfg = { codec, sampleRate: sr, numberOfChannels: 2, bitrate: br };
     try { if ((await AudioEncoder.isConfigSupported(cfg)).supported) { acfg = cfg; acodec = mux; break; } } catch (e) {}
   }
   if (!vcfg || !acfg) return null;
 
-  const muxer = new Mp4Muxer.Muxer({
-    target: new Mp4Muxer.ArrayBufferTarget(),
-    video: { codec: 'avc', width: W, height: H, frameRate: fps },
-    audio: { codec: acodec, numberOfChannels: 2, sampleRate: sr },
-    fastStart: 'in-memory',
-    firstTimestampBehavior: 'offset',
+  const muxer = new Mp4Writer({
+    video: { width: W, height: H, fps },
+    audio: { codec: acodec, sampleRate: sr, channels: 2, bitrate: acfg.bitrate },
   });
   let encErr = null;
-  const venc = new VideoEncoder({ output: (ch, m) => muxer.addVideoChunk(ch, m), error: e => { encErr = e; } });
-  const aenc = new AudioEncoder({ output: (ch, m) => muxer.addAudioChunk(ch, m), error: e => { encErr = e; } });
+  const venc = new VideoEncoder({ output: (ch, m) => muxer.addVideo(ch, m), error: e => { encErr = e; } });
+  const aenc = new AudioEncoder({ output: (ch, m) => muxer.addAudio(ch, m), error: e => { encErr = e; } });
   venc.configure(vcfg); aenc.configure(acfg);
 
   const Lc = buffer.getChannelData(0), Rc = buffer.numberOfChannels > 1 ? buffer.getChannelData(1) : Lc;
@@ -1168,12 +1351,12 @@ async function encodeWebCodecs(buffer, an, L, onProgress) {
     onProgress(1, 'Finishing');
     await venc.flush(); await aenc.flush();
     if (encErr) throw encErr;
-    muxer.finalize();
   } finally {
     try { venc.close(); } catch (e) {}
     try { aenc.close(); } catch (e) {}
   }
-  return { blob: new Blob([muxer.target.buffer], { type: 'video/mp4' }), ext: 'mp4' };
+  if (aOff < total) throw new Error('Not all of the audio was encoded.');
+  return { blob: muxer.finalize(), ext: 'mp4', audio: acodec === 'aac' ? 'AAC audio' : 'Opus audio' };
 }
 async function encodeRealtime(buffer, an, L, onProgress) {
   if (!window.MediaRecorder) throw new Error('This browser cannot create video. Use Chrome or Edge.');
@@ -1211,11 +1394,11 @@ async function encodeRealtime(buffer, an, L, onProgress) {
   rec.stop(); await stopped;
   stream.getTracks().forEach(t => t.stop());
   if (cancelFlag) throw new Cancelled();
-  return { blob: new Blob(parts, { type: mime.split(';')[0] }), ext };
+  return { blob: new Blob(parts, { type: mime.split(';')[0] }), ext, audio: /mp4a/.test(mime) ? 'AAC audio' : 'Opus audio' };
 }
 async function encode(buffer, an, L, onProgress) {
   let res = null;
-  if ('VideoEncoder' in window && 'AudioEncoder' in window && window.Mp4Muxer) res = await encodeWebCodecs(buffer, an, L, onProgress);
+  if (canFast) res = await encodeWebCodecs(buffer, an, L, onProgress);
   if (!res) res = await encodeRealtime(buffer, an, L, onProgress);
   return res;
 }
@@ -1245,11 +1428,14 @@ async function runSingle() {
   if (resultURL) URL.revokeObjectURL(resultURL);
   resultURL = URL.createObjectURL(res.blob);
   $('resultVideo').src = resultURL;
-  $('resultInfo').textContent = `${resultName} · ${mb(res.blob.size)}`;
+  $('resultInfo').textContent = `${resultName} · ${mb(res.blob.size)} · ${res.audio}`;
   $('result').hidden = false;
-  setStatus('The video is ready. Check it, then press Save video.');
+  setStatus(res.audio === 'Opus audio'
+    ? 'The video is ready. Its audio is Opus: it plays on YouTube and in Chrome or VLC, but QuickTime and the Windows player may stay silent.'
+    : 'The video is ready. Check it, then press Save video.');
 }
 async function runBatch() {
+  if (sameNames() && !S.artist.trim() && !S.title.trim()) { setStatus('Enter the title and/or artist name to put on all videos.', true); return; }
   await ensureFont();
   const queue = JOBS.filter(j => j.state === 'wait' || j.state === 'error');
   const n = queue.length, t0 = performance.now();
@@ -1267,10 +1453,12 @@ async function runBatch() {
       const buf = await decodeFile(j.file);
       const an = await analyze(buf, S.fps, f => { j.msg = 'Analyzing ' + pct(f); updateJob(j); overall(f * 0.1); }, () => cancelFlag);
       if (!an) throw new Cancelled();
-      const L = buildLayout(j.artist, j.title);
+      const [nA, nT] = jobNames(j);
+      j.madeAs = namesKey(j);
+      const L = buildLayout(nA, nT);
       const res = await encode(buf, an, L, (f, label) => { j.msg = `${label} ${pct(f)}`; updateJob(j); overall(0.1 + f * 0.9); });
-      j.blob = res.blob; j.filename = safeName(j.artist, j.title) + '.' + res.ext;
-      j.state = 'done'; j.msg = 'Done · ' + mb(res.blob.size);
+      j.blob = res.blob; j.filename = batchFileName(j, nA, nT, res.ext);
+      j.state = 'done'; j.msg = 'Done · ' + mb(res.blob.size) + ' · ' + res.audio;
       updateJob(j); done++;
       if ($('autoSave').checked) saveJob(j);
     } catch (e) {
@@ -1285,7 +1473,7 @@ async function runBatch() {
 $('renderBtn').addEventListener('click', async () => {
   if (busy) return;
   if (!S.batch && !analysis) return;
-  try { if (!('VideoEncoder' in window) && !audioCtx) audioCtx = new AudioContext({ sampleRate: 48000 }); } catch (e) {}
+  try { if (!canFast && !audioCtx) audioCtx = new AudioContext({ sampleRate: 48000 }); } catch (e) {}
   audioEl.pause();
   cancelFlag = false; setBusy(true);
   try {
@@ -1300,16 +1488,33 @@ $('renderBtn').addEventListener('click', async () => {
 $('cancelBtn').addEventListener('click', () => { cancelFlag = true; setStatus('Cancelling…'); });
 
 /* ---------- mode ---------- */
+function batchFileName(j, a, t, ext) {
+  let base = safeName(a, t);
+  if (sameNames()) base += ' ' + String(JOBS.indexOf(j) + 1).padStart(2, '0');
+  const used = new Set(JOBS.filter(x => x !== j && x.filename && (x.state === 'done' || x.state === 'saved'))
+    .map(x => x.filename.toLowerCase()));
+  let name = `${base}.${ext}`, n = 2;
+  while (used.has(name.toLowerCase())) name = `${base} (${n++}).${ext}`;
+  return name;
+}
+function applyNamesUI() {
+  const same = sameNames();
+  $('titleField').hidden = S.batch && !same;
+  $('artistLbl').textContent = !S.batch ? 'Artist name' : same ? 'Artist name (on all videos)' : 'Artist name (for all without parentheses)';
+  $('titleLbl').textContent = same ? 'Track title (on all videos)' : 'Track title';
+  $('hintFiles').hidden = same;
+  $('hintSame').hidden = !same;
+}
 function applyMode() {
   $('tabSingle').setAttribute('aria-pressed', String(!S.batch));
   $('tabBatch').setAttribute('aria-pressed', String(S.batch));
   $('singleSrc').hidden = S.batch;
-  $('titleField').hidden = S.batch;
   $('batchSrc').hidden = !S.batch;
   $('batch').hidden = !S.batch;
   $('transport').hidden = S.batch;
   $('result').hidden = S.batch || !resultBlob;
-  $('artistLbl').textContent = S.batch ? 'Artist name (for all without parentheses)' : 'Artist name';
+  applyNamesUI();
+  if (S.batch) { syncJobNames(); renderJobs(); }
   audioEl.pause();
   if (S.batch) setStatus(JOBS.length ? `${JOBS.length} tracks in the list.` : 'Choose a folder or several audio files.');
   else setStatus(analysis ? `Ready to create a video of "${audioName}".` : 'Choose an audio file to start.');
@@ -1322,8 +1527,9 @@ $('tabBatch').addEventListener('click', () => { S.batch = true; persist(); apply
 const redraw = () => { needsDraw = true; };
 const bgRedraw = () => { buildBackground(); needsDraw = true; };
 const CTRL = [
-  ['artist', 'text', () => { onDefaultArtist(); rebuildText(); }],
-  ['title', 'text', rebuildText],
+  ['artist', 'text', () => { syncJobNames(); rebuildText(); }],
+  ['title', 'text', () => { syncJobNames(); rebuildText(); }],
+  ['batchNames', 'select', () => { applyNamesUI(); syncJobNames(); renderJobs(); rebuildText(); }],
   ['format', 'select', rebuildAll],
   ['fps', 'num', () => { updateTransport(); runSingleAnalysis(); }],
   ['font', 'select', rebuildText],
@@ -1380,7 +1586,60 @@ $('resetLook').addEventListener('click', () => {
   buildSwatches(); rebuildAll();
 });
 
+/* ---------- environment check ---------- */
+async function checkSupport() {
+  const msgs = [];
+  const hasCodecs = 'VideoEncoder' in window && 'AudioEncoder' in window;
+  let h264 = false;
+  if (hasCodecs) {
+    for (const codec of ['avc1.640028', 'avc1.4d0028', 'avc1.42e028']) {
+      try { if ((await VideoEncoder.isConfigSupported({ codec, width: 1920, height: 1080, bitrate: 8e6, framerate: 30 })).supported) { h264 = true; break; } } catch (e) {}
+    }
+  }
+  canFast = h264;
+  canAac = false;
+  if (hasCodecs) { try { canAac = (await AudioEncoder.isConfigSupported({ codec: 'mp4a.40.2', sampleRate: 48000, numberOfChannels: 2, bitrate: 128000 })).supported; } catch (e) {} }
+  if (!window.isSecureContext) {
+    msgs.push('This page is not opened over a secure (https://) address, so fast MP4 encoding is turned off. Open it from an https:// link.');
+  } else if (canFast && !canAac) {
+    msgs.push('This browser can’t encode AAC audio, so videos will get Opus audio. YouTube, Instagram, Chrome and VLC play it, but QuickTime and the built-in Windows player may play it without sound. Chrome or Edge on Windows or macOS create AAC audio.');
+  } else if (!canFast) {
+    msgs.push('This browser can’t create MP4 files quickly. Videos will be recorded in real time, which takes as long as the song, and may be saved as WebM. For the best result, use Chrome or Edge on a computer.');
+  }
+  if (!window.MediaRecorder && !canFast) {
+    msgs.length = 0;
+    msgs.push('This browser can’t create video files. Please use Chrome or Edge on a computer.');
+  }
+  const n = $('notice'); n.textContent = '';
+  for (const m of msgs) { const p = document.createElement('p'); p.textContent = m; n.appendChild(p); }
+  n.hidden = !msgs.length;
+  updateTransport();
+}
+
+/* ---------- clear saved data ---------- */
+let clearArmed = null;
+$('clearSaved').addEventListener('click', async () => {
+  const btn = $('clearSaved');
+  if (!clearArmed) {
+    btn.textContent = 'Click again to clear everything saved in this browser';
+    clearArmed = setTimeout(() => { clearArmed = null; btn.textContent = 'Clear saved settings and photo'; }, 4000);
+    return;
+  }
+  clearTimeout(clearArmed); clearArmed = null;
+  try { localStorage.removeItem('latvideo.settings'); } catch (e) {}
+  try { await idbOp('readwrite', s => s.delete('photo')); } catch (e) {}
+  Object.assign(S, { artist: '', batchNames: 'files', format: 'land', fps: 30 }, LOOK);
+  CTRL.forEach(syncControl); syncDisabled();
+  photo = null; $('photoFile').value = ''; $('forgetPhoto').hidden = true;
+  $('photoHint').textContent = 'The last photo you choose is saved as the default in this browser.';
+  applyNamesUI(); syncJobNames(); renderJobs();
+  buildSwatches(); rebuildAll();
+  btn.textContent = 'Cleared';
+  setTimeout(() => { btn.textContent = 'Clear saved settings and photo'; }, 2500);
+});
+
 /* ---------- start ---------- */
+checkSupport();
 syncDisabled();
 buildSwatches();
 rebuildAll();
